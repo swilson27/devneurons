@@ -1,0 +1,17 @@
+python-catmaid
+navis
+
+# development-related dependencies
+
+black
+flake8
+isort
+mypy
+setuptools
+wheel
+
+# useful things to have installed
+
+ipython
+ipdb
+jupyter
