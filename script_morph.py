@@ -15,13 +15,16 @@ import numpy as np
 import pandas as pd
 import pymaid
 from navis.core.core_utils import make_dotprops
-from navis.nbl.smat import LookupDistDotBuilder
+# from navis.nbl.smat import LookupDistDotBuilder
 from pymaid.core import Dotprops
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
 logger = logging.getLogger(__name__)
 HERE = Path(__file__).resolve().parent
+
+logger = logging.getLogger(__name__)
+logger.info("Using navis version %s", navis.__version__)
 CACHE_DIR = HERE / "cache"
 OUT_DIR = HERE / "output"
 # Logging tracker of events/errors; returns parent directory of given path, provides cache and output directories
@@ -38,28 +41,46 @@ DEFAULT_SEED = 1991
 ## Define functions ##
 
 
-def get_neurons():
+#%%
+def get_neurons(annotation = False):
     """
-    Get CatmaidNeuronLists of left and right brain pairs.
-    N.B. lists are each in arbitrary order.
-    
+    Get a respective CatmaidNeuronList for left and right pairs. Lists are each in arbitrary order.
+    if annotation = False: load neurons from downloaded csv (brain_pairs)
+        N.B. there are 2 L neurons duplicated, which are here removed for subsequent separate analysis
+    if annotation = True: load neurons from catmaid annotation (subset of brain_pairs), lacks duplicates
+
+    neurons stored as pickle object, will be loaded if in cache folder. N.B. cached neurons must be deleted if you wish to analyse a different subset
+
     Returns:
-        tuple: CmNL for left and right side respectively
+        {l/r}_neurons: tuple of CmNLs for left and right side respectively
+        duplicates: extracted (last) left_skid duplicates (2 in brain_pairs.csv), for separate analysis (has to be unique)
     """    
     fpath = HERE / "neurons.pickle"
     if not os.path.exists(fpath):
 
-        neurons = tuple(
-            pymaid.get_neuron("annotation:sw;brainpair;" + side) for side in "LR"
-        )
+        if annotation == False:
+            bp = pd.read_csv(HERE / "brain-pairs.csv")
+            bp.drop('region', axis=1, inplace=True)            
+            bp.drop_duplicates(subset=['leftid'])
+            has_duplicate = bp.duplicated(subset=['leftid'])
+            duplicates = bp[has_duplicate]
+            # left id has 2 neurons (4985759 and 8700125) with duplicated pairs, owing to developmental phenomenon on right side
+            # these deviant pairs are filtered out (as CmNs must be unique), with subsequent analysis separately applied on them at the end and results appended 
 
-        with open(fpath, "wb") as f:
-            pickle.dump(neurons, f, protocol=5)
+            l_neurons = tuple(pymaid.get_neuron(bp["leftid"]))
+            r_neurons = tuple(pymaid.get_neuron(bp["rightid"]))
+            return l_neurons, r_neurons, duplicates
+
+        else:
+            neurons = tuple(pymaid.get_neuron("annotation:sw;brainpair;" + side) for side in "LR")
+            # tuple of CmNLs for left and right side respectively, called for both L and R at once
+
+            with open(fpath, "wb") as f:
+                pickle.dump(neurons, f, protocol=5)
     else:
         with open(fpath, "rb") as f:
             neurons = pickle.load(f)
-
-    return neurons
+            return neurons
 
 
 def name_pair(left_names, right_names):
@@ -67,8 +88,8 @@ def name_pair(left_names, right_names):
     Replaces "left"/"right" (across pairs - left_names and right_names) with placeholder, to consider pairs as the same
 
     Args:
-        left_names (dict): name:CmN, presumed to contain "left" pairs
-        right_names (dict): name:CmN, presumed to contain "right pairs
+        left_names (list of str): name:CmN, presumed to contain "left" pairs
+        right_names (list of str): name:CmN, presumed to contain "right pairs
 
     Yields:
         list of tuples
@@ -85,12 +106,12 @@ def get_landmarks():
     Generates landmark coordinates from downloaded CSV of L and R brain hemispheres
 
     Returns:
-        numpy array: coordinates of L and R brain hemispheres
+        numpy ndarray: x, y, z coordinates of L and R brain hemispheres
     """    
     df = pd.read_csv(HERE / "bhem.csv", index_col=False, sep=", ")
     counts = Counter(df["landmark_name"])
-    l_cp = []
-    r_cp = []
+    l_xyz = []
+    r_xyz = []
     for name, count in counts.items():
         if count != 2:
             continue
@@ -98,10 +119,10 @@ def get_landmarks():
         if left[0] < right[0]:
             left, right = right, left
 
-        l_cp.append(left)
-        r_cp.append(right)
+        l_xyz.append(left)
+        r_xyz.append(right)
 
-    return np.asarray(l_cp), np.asarray(r_cp)
+    return np.asarray(l_xyz), np.asarray(r_xyz)
 
 
 def transform_neuron(tr: navis.transforms.base.BaseTransform, nrn: navis.TreeNeuron):
@@ -141,13 +162,13 @@ def get_transformed_neurons():
         by_name_r = dict(zip(neurons_r.name, neurons_r))
 
         paired = list(name_pair(by_name_l, by_name_r))
-        l_cp, r_cp = get_landmarks()
+        l_xyz, r_xyz = get_landmarks()
 
-        transform = navis.transforms.MovingLeastSquaresTransform(l_cp, r_cp)
+        transformed_l = navis.transforms.MovingLeastSquaresTransform(l_xyz, r_xyz)
         left_transform = []
         right_raw = []
         for l_name, r_name in paired:
-            left_transform.append(transform_neuron(transform, by_name_l[l_name]))
+            left_transform.append(transform_neuron(transformed_l, by_name_l[l_name]))
             right_raw.append(by_name_r[r_name])
 
         out = (left_transform, right_raw)
@@ -162,14 +183,16 @@ def get_transformed_neurons():
 
 def make_dotprop(neuron, prune_strahler=(-1, None), resample=1000):
     """
-    Resamples neuron to given resolution (1000 nodes per every N units of cable?)
+    First prunes by strahler index (default = 1) and resamples neuron to given resolution (1000 nodes per every N units of cable?)
+    Subsequently applies navis.make_dotprops to this neuron (k = 5, representing appropriate # of nearest neighbours [for tangent vector calculation] for the sparse point clouds of skeletons)
+
     Args:
         neuron (TN)
-        prune_strahler (tuple, optional): prune TN by strahler index, defaults to lowest order only (-1, None).
-        resample (int, optional):  Defaults to 1000.
+        prune_strahler: prune TN by strahler index, defaults to lowest order only (-1, None)
+        resample (int): resamples to # of nodes per every N units of cable? Defaults to 1000
 
     Returns:
-        _type_: _description_
+        Dotprops of pruned & resampled neuron
     """    
     nrn = neuron.prune_by_strahler(list(prune_strahler))
     nrn.tags = {}
@@ -177,20 +200,19 @@ def make_dotprop(neuron, prune_strahler=(-1, None), resample=1000):
     return make_dotprops(nrn, 5)
 
 
-def make_dps(neurons, prune_strahler=(-1, None), resample=1000):
+def make_dps(neurons: navis.TreeNeuron, prune_strahler=(-1, None), resample=1000):
     """
-    Makes dot products from input neurons?
+    Applies make_dotprop to list of TreeNeurons, utilising multiprocessing to speed up
 
     Args:
-        neurons (_type_): _description_
-        prune_strahler (tuple, optional): prune TN by strahler index, defaults to lowest order only (-1, None).
-        resample (int, optional): _description_. Defaults to 1000.
+        neurons (TN)
+        prune_strahler
+        resample (int): defaults to 1000
 
     Returns:
-        _type_: _description_
+        Dotprops of pruned & resampled neurons
     """    
     out = []
-    nrn: navis.TreeNeuron
 
     fn = partial(make_dotprop, prune_strahler=prune_strahler, resample=resample)
 
@@ -207,11 +229,12 @@ def make_dps(neurons, prune_strahler=(-1, None), resample=1000):
 
 def get_dps(prune_strahler=(-1, None), resample=1000):
     """
-    Transforms left pairs, makes dot products for both these and right pairs and outputs. Loaded from pickle if already ran.
+    Obtains left and right pairs from prior functions.
+    Transforms left pairs, makes dot products for both these and right pairs and outputs. Loaded from pickle if already ran
 
     Args:
-        prune_strahler (tuple, optional): prune TN by strahler index, defaults to lowest order only (-1, None).
-        resample (int, optional): _description_. Defaults to 1000.
+        prune_strahler: prune TN by strahler index, defaults to lowest order only (-1, None)
+        resample (int): resamples to # of nodes per every N units of cable? Defaults to 1000
 
     Returns:
         list: dotproducts for l_trans and r
@@ -231,6 +254,7 @@ def get_dps(prune_strahler=(-1, None), resample=1000):
 
 
 def train_nblast(transformed_l: List[navis.Dotprops], right: List[navis.Dotprops]):
+    # Unused?   
     matching_lists = [
         [idx, idx + len(transformed_l)] for idx in range(len(transformed_l))
     ]
@@ -245,26 +269,49 @@ def train_nblast(transformed_l: List[navis.Dotprops], right: List[navis.Dotprops
 
     return score_mat
 
-
 T = TypeVar("T")
 
+def split_training_testing(items: List[T], n_partitions=5, seed=DEFAULT_SEED
+    ) -> Iterable[Tuple[List[T], List[T]]]:
+    """ Splits items into training and testing sets (default n = 5) ahead of cross-validation
 
-def split_training_testing(
-    items: List[T], n_partitions=5, seed=DEFAULT_SEED
-) -> Iterable[Tuple[List[T], List[T]]]:
+    Args:
+        items: list of zipped L and R dotprops
+        n_partitions (int): # of partitions for cross-validation, defaults to 5.
+        seed (int): defaults to specified DEFAULT_SEED for reproducibility
+
+    Returns:
+        [Tuple[List[T], List[T]]]: iteratively yields training and testing sets for n_partitions
+
+    Yields:
+        Iterator[Iterable[Tuple[List[T], List[T]]]]: _description_
+    """
     items_arr = np.array(items, dtype=object)
+    # Converts items (zipped list of L and R dotprops) into np.ndarray
     partition_idxs = np.arange(len(items_arr)) % n_partitions
+    # creates partition indexes as modulus of # of neurons and # of partitions
     rng = np.random.default_rng(seed)
     rng.shuffle(partition_idxs)
+    # randomly generates and shuffles partition indexes, based on seed for reproducibility
     for idx in range(n_partitions):
         training = list(items_arr[partition_idxs != idx])
         testing = list(items_arr[partition_idxs == idx])
         yield training, testing
+    # iteratively yields training and testing subsets of items, based on n_partitions
+    # each iteration will contain one of the partioned subsets as testing, with remaining partitions (n-1) used for training
 
 
-def train_nblaster(
-    dp_pairs: List[Tuple[Dotprops, Dotprops]], threads=8
-) -> navis.nbl.nblast_funcs.NBlaster:
+def train_nblaster(dp_pairs: List[Tuple[Dotprops, Dotprops]], threads=8
+    ) -> navis.nbl.nblast_funcs.NBlaster:
+    """ Takes 
+
+    Args:
+        dp_pairs (List[Tuple[Dotprops, Dotprops]]): _description_
+        threads (int): Defaults to 8.
+
+    Returns:
+        blaster : _description_
+    """    
     dps = []
     matching_lists = []
     for pair in dp_pairs:
@@ -279,10 +326,12 @@ def train_nblaster(
     ).with_bin_counts([21, 10])
     logger.info("Training...")
     score_mat = builder.build(threads)
+    # build score matrix across # of threads
     logger.info("Trained")
-    # df = score_mat.to_dataframe()
+    df = score_mat.to_dataframe()
     # print(df)
-    # df.to_csv(HERE / "smat.csv")
+    df.to_csv(HERE / "smat.csv")
+    # Return as 
 
     blaster = navis.nbl.nblast_funcs.NBlaster(True, True, None)
     blaster.score_fn = score_mat
@@ -290,10 +339,9 @@ def train_nblaster(
     return blaster
 
 
-def cross_validation(
-    dp_pairs: List[Tuple[Dotprops, Dotprops]], n_partitions=5, seed=DEFAULT_SEED
-):
+def cross_validation(dp_pairs: List[Tuple[Dotprops, Dotprops]], n_partitions=5, seed=DEFAULT_SEED):
     """ Takes zipped list of left and right dotprops, partitions data (training/testing) for cross-validation and applies nblaster function
+        Scores are calculated as mean of left-to-right and right-to-left comparisons
 
     Args:
         dp_pairs (List[Tuple[Dotprops, Dotprops]]): _description_
@@ -308,8 +356,8 @@ def cross_validation(
         "skid_raw-R",
         "partition",
         "mean_normalized_alpha_nblast"
-        #"name_left",
-    ]
+        #"name_left"
+        ]
     dtypes = [int, int, int, float]
     rows = []
     for partition, (training, testing) in tqdm(
@@ -318,12 +366,14 @@ def cross_validation(
         n_partitions,
     ):
         nblaster = train_nblaster(training, threads=None)
+        # creates nblast algorithm from training set
         for left, right in tqdm(testing, f"testing {partition}"):
             l_idx = nblaster.append(left)
             r_idx = nblaster.append(right)
             result = nblaster.single_query_target(l_idx, r_idx, scores="mean")
             #name = pymaid.get_names(left)
             rows.append([left.id, right.id, partition, result]) #, name])
+        # iteratively applies this across testing set, result output as mean of l to r & r to l scores
 
     df = pd.DataFrame(rows, columns=headers)
     for header, dtype in zip(headers, dtypes):
@@ -341,6 +391,7 @@ def cross_validation(
 ## Run analysis ##
 
 
+#%%
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     with logging_redirect_tqdm():
