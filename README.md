@@ -13,21 +13,16 @@ Also see devneuronsConn repo
 ## Files and scripts
 
 
-cns-pairs.csv - list of 1640 pairs (left and right) of homologous neurons, represented as CATMAID skeleton IDs (skids). Some are annotated with CNS region. 
+- cns-pairs.csv - list of 1640 pairs (left and right) of homologous neurons, represented as CATMAID skeleton IDs (skids). Some are annotated with CNS region. 
+- brain_landmarks.csv - landmarks from left and right hemispheres of brain; facilitates transformation of one side of homologous pair member onto other
+- CNS_landmark.csv - identical role to above, but includes both brain and VNC landmarks for whole CNS transformation
+- requirements.txt - dependencies required to run scripts
 
-brain_landmarks.csv - landmarks from left and right hemispheres of brain; facilitates transformation of one side of homologous pair member onto other
+- script_nblast.py - takes pairs and calculates a cross-validated NBLAST similarity score for each. Different options for Strahler pruning and node resampling, which will be represented in output file. Outputs CSV with left neuron skid, right neuron skid, partition, score and left neuron name (usually very similar to right homologue) 
+- script_synblast.py - very similar approach to above, but instead utilises SynBLAST to quantify morphological similarity. No Strahler pruning or node resampling as a result, and any neurons with no synapses will have their pair filtered out.
+- explore_morph.py - script to perform exploratory analysis on data; generates various plots and can be modified for bespoke analyses
 
-CNS_landmark.csv - identical role to above, but includes both brain and VNC landmarks for whole CNS transformation
-
-requirements.txt - dependencies required to run scripts
-
-script_nblast.py - takes pairs and calculates a cross-validated NBLAST similarity score for each. Different options for Strahler pruning and node resampling, which will be represented in output file. Outputs CSV with left neuron skid, right neuron skid, partition, score and left neuron name (usually very similar to right homologue) 
-
-script_synblast.py - very similar approach to above, but instead utilises SynBLAST to quantify morphological similarity. No Strahler pruning or node resampling as a result, and any neurons with no synapses will have their pair filtered out.
-
-explore_morph.py - script to perform exploratory analysis on data; generates various plots and can be modified for bespoke analyses
-
-cache and output folders to locally store respective components after running script.
+- cache and output folders to locally store respective components after running script.
 
 
 ## General information
