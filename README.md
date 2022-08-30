@@ -1,7 +1,7 @@
 ### devneuronsMorph
 
 
-This repository contains scripts and files for a quantification of morphological similarity across homologous (left:right) pairs of neurons. As a result, any 'deviant' (hence, dev) neurons can be identified, which significanty differ from expected morphological alikeness.
+This repository contains scripts and files for a systematic quantification of morphological similarity across homologous (left:right) pairs of neurons. As a result, any 'deviant' (hence, dev) neurons - which significanty differ from expected morphological alikeness - can be identified from low scores.
 
 Utilises data stored and generated within CATMAID, interfaced with via the Python libraries NAVis and pymaid. There are two separate scripts to quantify morphological similarity: one for NBLAST (https://navis.readthedocs.io/en/latest/source/tutorials/nblast.html) and one for SynBLAST (https://navis.readthedocs.io/en/latest/source/generated/navis.synblast.html?highlight=synblast). Files all utilise connectomic data from 'Seymour', an L1 D. melangoaster larvae.
 
