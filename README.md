@@ -1,4 +1,4 @@
-### devneuronsMorph
+# devneuronsMorph
 
 
 This repository contains scripts and files for a systematic quantification of morphological similarity across homologous (left:right) pairs of neurons. As a result, any 'deviant' (hence, dev) neurons - which significantly differ from expected morphological alikeness - can be identified from low scores. 
