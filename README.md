@@ -1,24 +1,49 @@
-# devneuronsMorph
+### devneuronsMorph
 
-Explain what this codebase is for; goals, usage, papers, resources etc., here.
-This README should answer any questions you think you might get bored of
-being asked by other users, and anything you have ever struggled to remember
-(e.g. how to set it up).
 
-This repository was based on a template at https://github.com/navis-org/pymaid_template .
+This repository contains scripts and files for a quantification of morphological similarity across homologous (left:right) pairs of neurons. As a result, any 'deviant' (hence, dev) neurons can be identified, which significanty differ from expected morphological alikeness.
 
-## Template usage
+Utilises data stored and generated within CATMAID, interfaced with via the Python libraries NAVis and pymaid. There are two separate scripts to quantify morphological similarity: one for NBLAST (https://navis.readthedocs.io/en/latest/source/tutorials/nblast.html) and one for SynBLAST (https://navis.readthedocs.io/en/latest/source/generated/navis.synblast.html?highlight=synblast). Files all utilise connectomic data from 'Seymour', an L1 D. melangoaster larvae.
 
-This section and below can be deleted once read.
-Modify the above but please keep the attribution line.
+Links: CATMAID (https://catmaid.readthedocs.io/en/stable/) ; NAVis (https://navis.readthedocs.io/en/latest/) ; pymaid (https://pymaid.readthedocs.io/en/latest/)
 
-### First use
+
+## Files and scripts
+
+
+cns-pairs.csv - list of 1640 pairs (left and right) of homologous neurons, represented as CATMAID skeleton IDs (skids). Some are annotated with CNS region. 
+brain_landmarks.csv - landmarks from left and right hemispheres of brain; facilitates transformation of one side of homologous pair member onto other
+CNS_landmark.csv - identical role to above, but includes both brain and VNC landmarks for whole CNS transformation
+requirements.txt - dependencies required to run scripts
+
+script_nblast.py - takes pairs and calculates a cross-validated NBLAST similarity score for each. Different options for Strahler pruning and node resampling, which will be represented in output file. Outputs CSV with left neuron skid, right neuron skid, partition, score and left neuron name (usually very similar to right homologue) 
+script_synblast.py - very similar approach to above, but instead utilises SynBLAST to quantify morphological similarity. No Strahler pruning or node resampling as a result, and any neurons with no synapses will have their pair filtered out.
+explore_morph.py - script to perform exploratory analysis on data; generates various plots and can be modified for bespoke analyses
+
+cache and output folders to locally store respective components after running script.
+
+
+## General information
+
+
+CATMAID requires credentials, which must be provided by user from a locally stored directory. These will not be tracked by repository's git.
+
+Live CATMAID instances can require lots of data to be downloaded, which both slows scripts and can lead to different results on subsequent runs (if neurons are modified). Intermediate data downloaded from CATMAID locally will be stored within `cache/` directory; git will ignore these files.
+
+Output CSVs and exploratory analyses will be stored in the `output/` directory to decrease clutter. This is also currently git ignored, but you can modify any of these if desired.
+
+
+TO DO: modify below
+
+
+## First use
+
 
 ```sh
 # Pick a name for your project
 PROJECT_NAME="my_project"
 
-# Clone this template, then change directory into it
+# Clone this , then change directory into it
 git clone https://github.com/navis-org/pymaid_template.git "$PROJECT_NAME"
 cd "$PROJECT_NAME"
 
@@ -44,40 +69,16 @@ cp credentials/example.json credentials/credentials.json
 
 Then edit the credentials file to access your desired CATMAID server, instance, and user.
 
-### General use
+
+## General use
+
 
 - Whenever you have a new terminal, activate the environment: `source venv/bin/activate`
 - Run the script with `python script.py`
 
-### Structure
 
-This template is designed to minimise clutter in the top level directory, keeping it legible.
+## General guidelines
 
-The entry point here is `./script.py`, but you can add more scripts for different functionality.
-Shared functionality should be added to module files in the `utils/` package.
-This is also a good way to keep your entry point script legible at a high level.
-
-Sometimes you download a lot of data from live CATMAID instances,
-which can be slow and lead to different results on subsequent runs.
-You can cache that data in the `cache/` directory: git will ignore these files.
-
-CATMAID (and other) credentials must never enter your version control system.
-Git will ignore anything in the `credentials/` directory (except `example.json`):
-load your credentials from files there.
-
-Output should be stored in the `output/` directory to decrease clutter.
-For now, contents of this directory is git-ignored too,
-although sometimes you may want to track output: create a new directory or edit `output/.gitignore`.
-
-Document what your project is for in this `README.md`.
-
-Python dependencies are in `requirements.txt`:
-keep this up to date as you use more packages so that it's easy to recreate your environment.
-
-`.github/workflows/` contains configuration to have GitHub automatically check your code
-for some formatting/ legibility issues and some types of bug automatically when you push.
-
-### General guidelines
 
 - Use a modern python. Many actively maintained scientific tools follow numpy's deprecation schedule: https://numpy.org/neps/nep-0029-deprecation_policy.html
 - Follow coding standards to make your code as legible and recogniseable as possible. See PEP8: https://www.python.org/dev/peps/pep-0008/
@@ -90,9 +91,9 @@ for some formatting/ legibility issues and some types of bug automatically when 
 - Use seeded random number generators where randomness is needed, for replicability.
 - Remember to use ISO-8601 dates/times (YYYY-MM-DD) where necessary.
 
-### License
 
-This template is licensed under the Unlicense, but your code should not be;
-that's why it's deleted.
-If your code is ever released, or should be used by someone you haven't explicitly given permission to,
-you should provide your own license.
+## License
+
+
+This repository was based on a template at https://github.com/navis-org/pymaid_template .
+
