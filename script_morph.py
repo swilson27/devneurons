@@ -47,9 +47,7 @@ def get_neurons(annotation = False):
     if annotation = False: load neurons from downloaded csv (brain_pairs)
         N.B. there are 2 L neurons duplicated, which are here removed for subsequent separate analysis
     if annotation = True: load neurons from catmaid annotation (subset of brain_pairs), lacks duplicates
-
     neurons stored as pickle object, will be loaded if in cache folder. N.B. cached neurons must be deleted if you wish to analyse a different subset
-
     Returns:
         {l/r}_neurons: tuple of CmNLs for left and right side respectively
         duplicates: extracted (last) left_skid duplicates (2 in brain_pairs.csv), for separate analysis (has to be unique)
@@ -97,7 +95,6 @@ def get_neurons(annotation = False):
 def get_landmarks(landmarks):
     """
     Generates landmark coordinates from downloaded CSV of L and R VNC hemispheres
-
     Returns:
         numpy ndarray: x, y, z coordinates of L and R VNC hemispheres
     """    
@@ -128,11 +125,9 @@ def get_landmarks(landmarks):
 def transform_neuron(tr: navis.transforms.base.BaseTransform, nrn: navis.TreeNeuron):
     """
     Applies selected transformation (tr, type: BT) to neuron (nrn, type: TN)
-
     Args:
         tr (navis.transforms.base.BaseTransform): _description_
         nrn (navis.TreeNeuron): _description_
-
     Returns:
         TreeNeuron: Transformed TN/s
     """    
@@ -148,31 +143,35 @@ def get_transformed_neurons(landmarks):
     """
     Obtains transformed (moving least squares) neurons, taking left pairs and applying L:R mirror flip via 'bhem' landmarks
     Also outputs right pairs, with no transformation applied
-
     Returns:
         two lists: first will be transformed left, second right; both as class: TN
-
         stores as pickle, if already generated it will simply load this
     """
-    # fpath = HERE / "transformed_paired.pickle"
+    fpath = HERE / "transformed_paired.pickle"
 
-    # if not os.path.isfile(fpath):
-    neurons_l, neurons_r, duplicates = get_neurons()
+    if not os.path.isfile(fpath):
+        neurons_l, neurons_r, duplicates = get_neurons()
 
-    # create zipped list of paired neuron names
-    by_name_l = dict(zip(neurons_l.name, neurons_l))
-    by_name_r = dict(zip(neurons_r.name, neurons_r))
-    paired_names = list(zip(neurons_l.name, neurons_r.name))
+        # create zipped list of paired neuron names
+        by_name_l = dict(zip(neurons_l.name, neurons_l))
+        by_name_r = dict(zip(neurons_r.name, neurons_r))
+        paired_names = list(zip(neurons_l.name, neurons_r.name))
 
-    l_xyz, r_xyz = get_landmarks(landmarks)
-    transform = navis.transforms.MovingLeastSquaresTransform(l_xyz, r_xyz)
-    left_transform = []
-    right_raw = []
-    for l_name, r_name in paired_names:
-        left_transform.append(transform_neuron(transform, by_name_l[l_name]))
-        right_raw.append(by_name_r[r_name])
+        l_xyz, r_xyz = get_landmarks(landmarks)
+        transform = navis.transforms.MovingLeastSquaresTransform(l_xyz, r_xyz)
+        left_transform = []
+        right_raw = []
+        for l_name, r_name in paired_names:
+            left_transform.append(transform_neuron(transform, by_name_l[l_name]))
+            right_raw.append(by_name_r[r_name])
+        
+        with open(fpath, "wb") as f:
+            pickle.dump((left_transform, right_raw), f, 5)
+    else:
+        with open(fpath, "rb") as f:
+            left_transform, right_raw = pickle.load(f)
 
-    return left_transform, right_raw, duplicates
+    return left_transform, right_raw #, duplicates
 
 
 
@@ -191,12 +190,10 @@ def make_dotprop(neuron, prune_strahler = STRAHLER, resample = RESAMPLE):
     """
     First prunes by specified strahler index and resamples neuron to given resolution
     Subsequently applies navis.make_dotprops to this neuron (k = 5, representing appropriate # of nearest neighbours [for tangent vector calculation] for the sparse point clouds of skeletons)
-
     Args:
         neuron (TN)
         prune_strahler: prune TN by strahler index, defaults to lowest order only (-1, None)
         resample (int): resamples to # of nodes per every N units of cable? Defaults to 1000
-
     Returns:
         Dotprops of pruned & resampled neuron
     """    
@@ -213,12 +210,10 @@ def make_dotprop(neuron, prune_strahler = STRAHLER, resample = RESAMPLE):
 def make_dps(neurons: navis.TreeNeuron, prune_strahler = STRAHLER, resample = RESAMPLE):
     """
     Applies make_dotprop to list of TreeNeurons, utilising multiprocessing to speed up
-
     Args:
         neurons (TN)
         prune_strahler
         resample (int): defaults to 1000
-
     Returns:
         Dotprops of pruned & resampled neurons
     """    
@@ -243,11 +238,9 @@ def get_dps(landmarks, prune_strahler = STRAHLER, resample = RESAMPLE):
     """
     Obtains left and right pairs from prior functions.
     Transforms left pairs, makes dot products for both these and right pairs and outputs. Loaded from pickle if already ran
-
     Args:
         prune_strahler: prune TN by strahler index, defaults to lowest order only (-1, None)
         resample (int): resamples to # of nodes per every N units of cable? Defaults to 1000
-
     Returns:
         list: dotproducts for l_trans and r
     """    
@@ -255,7 +248,7 @@ def get_dps(landmarks, prune_strahler = STRAHLER, resample = RESAMPLE):
     #     HERE / f"dotprops_p{''.join(str(p) for p in prune_strahler)}_r{resample}.pickle"
     # )
     # if not fpath.is_file():
-    l_trans, r, dups = get_transformed_neurons(landmarks)
+    l_trans, r = get_transformed_neurons(landmarks)
     out = tuple(make_dps(ns, prune_strahler, resample) for ns in [l_trans, r])
     filtered_left = []
     filtered_right = []
@@ -264,7 +257,7 @@ def get_dps(landmarks, prune_strahler = STRAHLER, resample = RESAMPLE):
             filtered_left.append(l)
             filtered_right.append(r)
 
-    return filtered_left, filtered_right, dups    
+    return filtered_left, filtered_right #, dups    
     #     with open(fpath, "wb") as f:
     #         pickle.dump(out, f, 5)
     # else:
@@ -274,10 +267,8 @@ def get_dps(landmarks, prune_strahler = STRAHLER, resample = RESAMPLE):
 
 def duplicate_prepare(duplicates, prune_strahler = STRAHLER, resample = RESAMPLE):
     """ Takes the outputted duplicate skids, performs identical preparatory steps and returns dotprops in form ready for cross_validation()
-
     Args:
         duplicates (pandas DF): DF of the duplicate skids, outputted from original CSV
-
     Returns:
         paired: list of the zipped dotprops (left, right), ready for cross_validation 
     """  
@@ -312,12 +303,10 @@ T = TypeVar("T")
 def split_training_testing(items: List[T], n_partitions=5, seed=DEFAULT_SEED
     ) -> Iterable[Tuple[List[T], List[T]]]:
     """ Splits items into training and testing sets (default n = 5) to generate custom score matrices ahead of cross-validated nblast
-
     Args:
         items: list of zipped L and R dotprops
         n_partitions (int): # of partitions for cross-validation, defaults to 5.
         seed (int): defaults to specified DEFAULT_SEED for reproducibility
-
     Yields:
         Iterator[Iterable[Tuple[List[T], List[T]]]]: iteratively yields training and testing sets for n_partitions
     """
@@ -339,11 +328,9 @@ def split_training_testing(items: List[T], n_partitions=5, seed=DEFAULT_SEED
 def train_nblaster(dp_pairs: List[Tuple[Dotprops, Dotprops]], threads=8
     ) -> navis.nbl.nblast_funcs.NBlaster:
     """ Takes pairs of dotprops, constructs matching_lists (to build score_mat) from pairs, trains nblaster for each
-
     Args:
         dp_pairs (List[Tuple[Dotprops, Dotprops]]): Dotproducts from the L-R pairs
         threads (int): Defaults to 8.
-
     Returns:
         blaster : NBLAST algorithm (version 2) trained on input dp_pairs, ready to apply to testing set
     """    
@@ -411,12 +398,10 @@ def cross_validation(
 def cross_validation2(dp_pairs: List[Tuple[Dotprops, Dotprops]], n_partitions=5, seed=DEFAULT_SEED):
     """ Takes zipped list of left and right dotprops, partitions data (training/testing) for cross-validated nblaster training and applies these functions to testing sets
         Scores are calculated as mean of transformed_left-to-right and right-to-transformed_left comparisons
-
     Args:
         dp_pairs (List[Tuple[Dotprops, Dotprops]]): _description_
         n_partitions (int, optional): _description_. Defaults to 5.
         seed (_type_, optional): _description_. Defaults to DEFAULT_SEED.
-
     Returns:
         _type_: _description_
     """
@@ -462,28 +447,17 @@ def cross_validation2(dp_pairs: List[Tuple[Dotprops, Dotprops]], n_partitions=5,
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     with logging_redirect_tqdm():
-        left, right, dups = get_dps('cns')
+        left, right = get_dps('cns')
         paired = list(zip(left, right))
         df = cross_validation(paired)
         print(df)
         # analysis for most pairs
 
-        paired2 = duplicate_prepare(dups)
-        df2 = cross_validation(paired2)
-        print(df2)
+        # paired2 = duplicate_prepare(dups)
+        # df2 = cross_validation(paired2)
+        # print(df2)
         # identical analysis done separately for duplicate skids, as CatmaidNeuron objects can't be repeated
 
-        concat_df = pd.concat([df,df2])
-        concat_df.to_csv(OUT_DIR / f"manalysis{STRAHLER}_results{RESAMPLE}.csv", index=False)
+        # concat_df = pd.concat([df,df2])
+        df.to_csv(OUT_DIR / f"manalysis_test.csv", index=False)
         # merge both dataframes and export as CSV
-
-
-
-### Visualise skeletons ###
-
-
-
-def visualise_transform(l_trans, r_raw, skids, plot_height = 800, plot_width = 1200):
-    nrns = navis.NeuronList(l_trans) + navis.NeuronList(r_raw)
-    skeletons = nrns.idx[skids]
-    viewer = skeletons.plot3d(height = plot_height, width = plot_width)

@@ -1,75 +1,145 @@
 #%%
-import navis
-import pymaid
+import numpy as np
 import pandas as pd
 from pathlib import Path
-import os
+import pymaid
+import navis
 import json
+from matplotlib import pyplot as plt
+import os
 import pickle
 
 HERE = Path(__file__).resolve().parent
+OUT_DIR = HERE / 'output'
+
+
 creds_path = os.environ.get("PYMAID_CREDENTIALS_PATH", HERE / "seymour.json")
 with open(creds_path) as f:
     creds = json.load(f)
 rm = pymaid.CatmaidInstance(**creds)
 
-## Modify output dfs from v1 and v2 analyses ##
-#%%
-scores = pd.read_csv(HERE / 'output'/'manalysis(1,)_results.csv')
-scores = scores.drop('partition', 1)
-scores = scores.rename(columns={"mean_normalized_alpha_nblast": "normalized_nblast", "skeleton_id-transformed-L":"skid_transformed-L", "skeleton_id-raw-R":"skid_raw-R"})
-scores = scores.sort_values('skid_transformed-L')
-scores = scores.reset_index(drop = True)
 
-# Get names of all left_skids and assign to new column
-vals = pymaid.get_names(list(scores['skid_transformed-L']))
-vals = list(vals.values())
-# CSV contains 3 duplicates of left skid, owing to developmental duplications and different right pairs. Must insert these names to compensate for order
-vals.insert(253, 'AVL011 PN Right 2?')
-vals.insert(514, 'OLP4;right')
-# Also just 2 complete duplicates, remove these
 
-scores["left_name"] = pd.Series(vals)
-scores.sort_values(by = ['normalized_nblast'], axis=0, inplace=True)
+### Visualise skeletons ###
 
-scores.to_csv("MAnalysis_results.csv", index=False)
+
 
 #%%
-scores_old = pd.read_csv('crossval_results_v1.csv')
-scores_old = scores_old.drop('partition', 1)
-scores_old = scores_old.rename(columns={"mean_normalized_alpha_nblast": "normalized_nblast", "skeleton_id-transformed-L": "skid_transformed-L", "skeleton_id-raw-R": "skid_raw-R"})
-
-scores_old.sort_values(by = ['skid_transformed-L'], axis=0, inplace=True)
-vals = pymaid.get_names(list(scores_old['skid_transformed-L']))
-scores_old["left_name"] = vals.values()
-scores_old.sort_values(['normalized_nblast'], axis=0, inplace=True)
-    
-scores_old.to_csv("MAnalysis_results_v1.csv", index=False)
-
-
-## Visualise treeneurons from analysis ##
-
-
-# pre-pruning, coloured by Strahler index:
-#%%
-nL = pymaid.get_neuron("bridge-like left")
-nR = pymaid.get_neuron("bridge-like right")
-fig = navis.plot3d([nL, nR], color_by='strahler_index', palette='viridis', backend='plotly')
-
-# post-pruning
-# %%
-PS =(-1, None) #PS = prune_strahler arguments
-resample=1000
-fpath = (
-        HERE / f"dotprops_p{''.join(str(p) for p in PS)}_r{resample}.pickle"
-    )
+fpath = HERE / "transformed_paired.pickle"
 with open(fpath, "rb") as f:
-            dotprops = pickle.load(f)
+    l_trans, r_raw = pickle.load(f)
+
+def visualise_transform(l_trans, r_raw, skids, plot_height = 800, plot_width = 1200):
+    nrns = navis.NeuronList(l_trans) + navis.NeuronList(r_raw)
+    skeletons = nrns.idx[skids]
+    viewer = skeletons.plot3d(height = plot_height, width = plot_width)
 
 #%%
-nL = pymaid.get_neuron("bridge-like left")
-nR = pymaid.get_neuron("bridge-like right")
-fig = navis.plot3d([nL.prune_by_strahler(slice(-1, None)), nR.prune_by_strahler(slice(-1, None))], color_by='strahler_index', palette='viridis', backend='plotly')
+visualise_transform(l_trans, r_raw, [skids_you_want])
 
 
-# %%
+
+### Plots for whole data ###
+
+
+
+## Load output CSVs ##
+
+
+#%%
+manalysis_s0r100 = pd.read_csv(HERE / 'output'/'manalysis()_results100.csv')
+manalysis_s1r100 = pd.read_csv(HERE / 'output'/'manalysis(1,)_results100.csv')
+manalysis_s0r500 = pd.read_csv(HERE / 'output'/'manalysis()_results500.csv')
+manalysis_s1r500 = pd.read_csv(HERE / 'output'/'manalysis(1,)_results500.csv')
+manalysis_s0r1000 = pd.read_csv(HERE / 'output'/'manalysis()_results1000.csv')
+manalysis_s1r1000 = pd.read_csv(HERE / 'output'/'manalysis(1,)_results1000.csv')
+# integer after s refers to pruned strahler index (e.g. 0 for none, 1 for leaf nodes)
+# integer after r refers to node resampling per N (100, 500 or 1000) units of cable
+
+
+## Plots to assess various strahler-pruning and resampling combinations
+
+
+def gen_xy(data, normalise = False):   
+    """ Generate x and y values for plotting from morphology analysis data, comparing similarity across L-R pairs
+        NBLAST values on x and # of L-R pairs on y
+
+    Args:
+        data: pandas df, with connectivity values stored in column 'mean_normalized_alpha_nblast'
+        normalise (bool): option to normalise y (cumulative sum) values, if plotting for different amounts of values (x). Defaults to False.
+    """     
+
+    vals = list(data['mean_normalized_alpha_nblast'])
+    vals = [np.nan if x is None else x for x in vals]
+    x = sorted(v for v in vals if not np.isnan(v))
+    y = np.arange(len(x))
+    if normalise:
+        y /= len(x)
+
+    else:
+        print('data not of correct format (json dict or pandas df)')
+ 
+    return x, y
+
+
+## Plots for whole data ##
+
+
+#%%
+# Strahler pruning = 0
+fig = plt.figure()
+ax = fig.add_subplot()
+
+s0r100_x, s0r100_y= gen_xy(manalysis_s0r100)
+ax.plot(s0r100_x, s0r100_y, label='S = 0, R = 100')
+
+s0r500_x, s0r500_y = gen_xy(manalysis_s0r500)
+ax.plot(s0r500_x, s0r500_y, label='S = 0, R = 500')
+
+s0r1000_x, s0r1000_y= gen_xy(manalysis_s0r1000)
+ax.plot(s0r1000_x, s0r1000_y, label='S = 0, R = 1000')
+
+
+ax.legend()
+ax.set_xlabel('NBLAST similarity value')
+ax.set_label('Cumulative frequency')
+
+fig.savefig('manalysis_cumulative_s0.pdf', format='pdf')
+
+# Strahler pruning = 1
+fig = plt.figure()
+ax = fig.add_subplot()
+
+s1r100_x, s1r100_y= gen_xy(manalysis_s1r100)
+ax.plot(s1r100_x, s1r100_y, label='S = 1, R = 100')
+
+s1r500_x, s1r500_y= gen_xy(manalysis_s1r500)
+ax.plot(s1r500_x, s1r500_y, label='S = 1, R = 500')
+
+s1r1000_x, s1r1000_y= gen_xy(manalysis_s1r1000)
+ax.plot(s1r1000_x, s1r1000_y, label='S = 1, R = 1000')
+
+
+ax.legend()
+ax.set_xlabel('NBLAST similarity value')
+ax.set_label('Cumulative frequency')
+
+fig.savefig('manalysis_cumulative_s1.pdf', format='pdf')
+
+# Strahler pruning = both
+fig = plt.figure()
+ax = fig.add_subplot()
+
+ax.plot(s0r100_x, s0r100_y, label='S = 0, R = 100')
+ax.plot(s0r500_x, s0r500_y, label='S = 0, R = 500')
+ax.plot(s0r1000_x, s0r1000_y, label='S = 0, R = 1000')
+
+ax.plot(s1r100_x, s1r100_y, label='S = 1, R = 100')
+ax.plot(s1r500_x, s1r500_y, label='S = 1, R = 500')
+ax.plot(s1r1000_x, s1r1000_y, label='S = 1, R = 1000')
+
+ax.legend()
+ax.set_xlabel('NBLAST similarity value')
+ax.set_label('Cumulative frequency')
+
+fig.savefig('manalysis_cumulative_all.pdf', format='pdf')
