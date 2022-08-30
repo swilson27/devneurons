@@ -35,7 +35,7 @@ Live CATMAID instances can require lots of data to be downloaded, which both slo
 Output CSVs and exploratory analyses will be stored in the `output/` directory to decrease clutter. This is also currently git ignored, but you can modify any of these if desired.
 
 
-TO DO: modify below
+# TO DO: modify below
 
 
 ## First use
